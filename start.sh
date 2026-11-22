@@ -9,6 +9,10 @@ export PORT="${PORT:-8787}"
 
 # La tienda local es de un solo operador: se fija la sesion para que los
 # archivos sigan visibles aunque el navegador borre sus cookies.
+# El pin solo se aplica cuando la API escucha en loopback (por ejemplo,
+# 127.0.0.1 o localhost). Si la API se expone fuera de loopback,
+# OWNER_SESSION se ignora, queda activo el aislamiento por sesion y una sesion
+# nueva no ve las entradas de la sesion de operador fijada.
 # Para aislar por perfil de navegador, arranca con OWNER_SESSION vacio:
 #   OWNER_SESSION= ./start.sh
 export OWNER_SESSION="${OWNER_SESSION-local-operator-front}"
