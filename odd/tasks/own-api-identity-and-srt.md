@@ -39,9 +39,9 @@ The API is the only component holding the provider key and the only component th
 - [x] T2. Backend: issue and read the session cookie, scope files and records by owner, adopt the legacy unowned entries.
 - [x] T3. Backend: serve stored documents with a safe MIME, `nosniff`, a sandbox CSP and an attachment disposition for non-media kinds.
 - [x] T4. Backend: add `api/selftest.mjs` (node:test, no dependencies) covering the session scoping and the strict serving.
-- [ ] T5. Front: add `front/srt-codec.js` with a real SRT/VTT parser and serializer plus `front/srt-codec.test.mjs`.
-- [ ] T6. Front: wire the codec into the editor: "Exportar SRT" / "Exportar VTT" download a real file; "Importar SRT pegado" fills the rows with the real cues.
-- [ ] T7. Front: load the codec from `front/index.html` before the integration scripts.
+- [x] T5. Front: add `front/srt-codec.js` with a real SRT/VTT parser and serializer plus `front/srt-codec.test.mjs`.
+- [x] T6. Front: wire the codec into the editor: "Exportar SRT" / "Exportar VTT" download a real file; "Importar SRT pegado" fills the rows with the real cues.
+- [x] T7. Front: load the codec from `front/index.html` before the integration scripts.
 
 ## Acceptance criteria
 - Two different sessions (two cookies) see different file lists; a session cannot download or delete another session's file.
@@ -69,7 +69,9 @@ The API is the only component holding the provider key and the only component th
 Off. This project has no test runner and no package manifest; the checks above are the executable evidence (node:test for the new units, HTTP probes and a CDP walkthrough for the runtime behavior).
 
 ## Work-unit evidence
-- Pending.
+- Backend unit: commit `7de1ad3` — `feat(api): scope the stores by session and serve generated files safely`.
+- Front unit: pending.
+- Branch: `feature/own-api-integration`.
 
 ## Backend verification evidence (T1-T4)
 - `node --check api/server.mjs`: OK.
@@ -81,3 +83,18 @@ Off. This project has no test runner and no package manifest; the checks above a
   - an archive (`.zip`) -> `application/octet-stream`, attachment, nosniff;
   - an image (`.png`) -> `image/png`, `content-disposition: inline`, `content-security-policy: sandbox; default-src 'none'`, nosniff.
 - The front needs no change for the session: the browser sends the `HttpOnly` cookie on its own.
+
+## Front verification evidence (T5-T7)
+- `node --check front/srt-codec.js` and `node --check front/media-results.js`: OK.
+- `node --test front/srt-codec.test.mjs`: 9/9 pass (real SRT, VTT header, BOM + CRLF, multi-line text, NOTE and cue settings, plain script rejected, serializers, round trip, rows without milliseconds).
+- Live browser (headless Chrome over CDP), replayed independently by the parent:
+  - the codec is loaded in the page (`cuesFromRows, isSubtitleText, parseCues, parseTimestamp, toSrt, toVtt`);
+  - pasting a real SRT and clicking "Importar SRT pegado" fills the rows with the REAL timings (`00:00:01.250/00:00:04.750`, `00:00:05.500/00:00:09.125`, `00:00:10.000/00:00:14.000`), not the fabricated 4-second windows;
+  - "Exportar SRT" downloads a `text/plain;charset=utf-8` blob of 155 bytes named `subtitulos.srt`; "Exportar VTT" downloads a `text/vtt;charset=utf-8` blob named `subtitulos.vtt`; the text preview still renders;
+  - a plain script keeps the previous behavior (2 rows, `00:00:00 / 00:00:04`);
+  - zero console errors.
+- Regression of the main flow after both units: "Implementar" -> `POST /api/chat -> 200 (42822ms)`, "Mis Resultados" lists the files (3 images, 3 videos, 9 subtitles), zero console errors.
+- Ownership consistency after the live run: 20 files and 23 records, all owned by `local-operator-front` (no orphans, no cross-owner leaks).
+
+## Delivery note
+This feature landed in two work units (690 + 450 authored lines). Both exceed the ~400-line review heuristic on their own, mostly because each unit carries its own test suite (369 lines for `api/selftest.mjs`, 123 for `front/srt-codec.test.mjs`). The size is the honest cost of proving the behavior, not padding: no line was removed to fit a budget. When the branch is turned into a PR, the two units are the natural slice boundaries.
