@@ -55,6 +55,10 @@ Threat model: the untrusted boundary is the browser (a page from another site dr
 - A `config.json` holding a disallowed external URL is ignored on read (falls back to the default) and the incident is logged.
 - Live CDP walkthrough after the hardening: `POST /api/chat -> 200 (101421ms)`, result panel with the video and the subtitle preview, "Mis Resultados" with 19 files / 3 images / 3 videos / 8 subtitle previews, zero console errors. The origin check does not affect the browser flow.
 
+## Work-unit evidence
+- Branch: `feature/own-api-integration` (the repository had no prior history, so the integration and the hardening landed together as one baseline commit).
+- Commit: `885159b` — `feat(api): own Node API bridging the front to meta-api`.
+
 ## Known limitations
 - A local process can still drive the API: the trust boundary is the loopback binding plus the origin check. Remote exposure requires a reverse proxy with authentication.
 - The API has no per-user identity: the records and files are a single global store, which is the intended shape for a single-operator local tool.

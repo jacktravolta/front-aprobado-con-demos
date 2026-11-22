@@ -90,6 +90,10 @@ The current front is a single static `index.html` that generates prompts locally
   directamente. La URL de `a.metaaiusercontent.com/document` devuelve el visor HTML
   (no el archivo) y se descarta; el ZIP, MP4, SRT y VTT si devuelven bytes.
 
+## Work-unit evidence
+- Branch: `feature/own-api-integration` (the repository had no prior history, so the whole integration landed as one baseline commit).
+- Commit: `885159b` — `feat(api): own Node API bridging the front to meta-api`.
+
 ## Known limitations
 - `meta-api` no puede materializar los artefactos en este entorno (falla `bwrap` por
   permisos de red). La API propia lo compensa descargando los enlaces directos de la
