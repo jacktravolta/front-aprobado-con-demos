@@ -70,7 +70,7 @@ Off. This project has no test runner and no package manifest; the checks above a
 
 ## Work-unit evidence
 - Backend unit: commit `7de1ad3` — `feat(api): scope the stores by session and serve generated files safely`.
-- Front unit: pending.
+- Front unit: commit `58a460b` — `feat(front): real SRT import and export in the subtitle editor`.
 - Branch: `feature/own-api-integration`.
 
 ## Backend verification evidence (T1-T4)
