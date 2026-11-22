@@ -70,9 +70,10 @@ Off. This project has no test runner and no package manifest; the checks above a
 
 ## Work-unit evidence
 - Delivery strategy: `ask-on-risk`, resolved by the maintainer as "split into two slices". Chain strategy: `stacked-to-main`.
-- Slice A (backend), branch `feature/own-api-backend`, base `origin/main` (`885159b`): backend work unit `c0716a7` (`feat(api): scope the stores by session and serve generated files safely`), regression assertions `b4c8046` (`test(api): assert owner isolation and legacy bytes on disk`), and endpoint docs `5d18e78` (`docs(readme): align the file endpoint docs with the serving rules`). Files: `README.md`, `api/selftest.mjs`, `api/server.mjs`, `start.sh`.
-- Slice B (front), branch `feature/own-api-front`, base `origin/main` (`885159b`): feature ledger `14c498d`, front work unit `4bb4b83` (`feat(front): real SRT import and export in the subtitle editor`), ledger updates `4840b60` and `ae385ad`, and the ledger rewrite commit (`docs(tasks): record the two-slice delivery and the verification evidence`). Files: `front/index.html`, `front/media-results.js`, `front/srt-codec.js`, `front/srt-codec.test.mjs`, `odd/tasks/own-api-identity-and-srt.md`.
+- Slice A (backend), branch `feature/own-api-backend`, base `origin/main` (`885159b`): backend work unit `c0716a7` (`feat(api): scope the stores by session and serve generated files safely`), regression assertions `b4c8046` (`test(api): assert owner isolation and legacy bytes on disk`), and endpoint docs `5d18e78` (`docs(readme): align the file endpoint docs with the serving rules`). Files: `README.md`, `api/selftest.mjs`, `api/server.mjs`, `start.sh`. Pull request: #2 (https://github.com/jacktravolta/front-aprobado-con-demos/pull/2).
+- Slice B (front), branch `feature/own-api-front`, base `origin/main` (`885159b`): feature ledger `14c498d`, front work unit `4bb4b83` (`feat(front): real SRT import and export in the subtitle editor`), ledger updates `4840b60` and `ae385ad`, and the ledger rewrite `6a8e9b6` (`docs(tasks): record the two-slice delivery and the verification evidence`). Files: `front/index.html`, `front/media-results.js`, `front/srt-codec.js`, `front/srt-codec.test.mjs`, `odd/tasks/own-api-identity-and-srt.md`. Pull request: #3 (https://github.com/jacktravolta/front-aprobado-con-demos/pull/3).
 - Both slices are based on `origin/main`, are mergeable in either order, and touch disjoint files.
+- The former combined pull request #1 is closed as superseded by these two slices.
 
 ## Backend verification evidence (Slice A)
 - `node --check api/server.mjs`: OK.
