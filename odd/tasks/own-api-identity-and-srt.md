@@ -69,33 +69,33 @@ The API is the only component holding the provider key and the only component th
 Off. This project has no test runner and no package manifest; the checks above are the executable evidence (node:test for the new units, HTTP probes and a CDP walkthrough for the runtime behavior).
 
 ## Work-unit evidence
-- Backend unit: commit `7de1ad3` — `feat(api): scope the stores by session and serve generated files safely`.
-- Front unit: commit `58a460b` — `feat(front): real SRT import and export in the subtitle editor`.
-- Branch: `feature/own-api-integration`.
-- Pull request: https://github.com/jacktravolta/front-aprobado-con-demos/pull/1 (base `main`, 4 commits, 11 files, +1120/-45).
+- Delivery strategy: `ask-on-risk`, resolved by the maintainer as "split into two slices". Chain strategy: `stacked-to-main`.
+- Slice A (backend), branch `feature/own-api-backend`, base `origin/main` (`885159b`): backend work unit `c0716a7` (`feat(api): scope the stores by session and serve generated files safely`), regression assertions `b4c8046` (`test(api): assert owner isolation and legacy bytes on disk`), and endpoint docs `5d18e78` (`docs(readme): align the file endpoint docs with the serving rules`). Files: `README.md`, `api/selftest.mjs`, `api/server.mjs`, `start.sh`.
+- Slice B (front), branch `feature/own-api-front`, base `origin/main` (`885159b`): feature ledger `14c498d`, front work unit `4bb4b83` (`feat(front): real SRT import and export in the subtitle editor`), ledger updates `4840b60` and `ae385ad`, and the ledger rewrite commit (`docs(tasks): record the two-slice delivery and the verification evidence`). Files: `front/index.html`, `front/media-results.js`, `front/srt-codec.js`, `front/srt-codec.test.mjs`, `odd/tasks/own-api-identity-and-srt.md`.
+- Both slices are based on `origin/main`, are mergeable in either order, and touch disjoint files.
 
-## Backend verification evidence (T1-T4)
+## Backend verification evidence (Slice A)
 - `node --check api/server.mjs`: OK.
-- `node --test api/selftest.mjs`: 5/5 pass (cookie issuance + strict attributes, session isolation for list/download/delete, `OWNER_SESSION` pinning, legacy adoption, strict serving).
-- Live against the real store (`./start.sh`, `OWNER_SESSION=local-operator-front`):
-  - the 19 pre-existing files were adopted by the pinned session and `api/data/owner.json` now holds `{"primary": "local-operator-front"}`;
-  - a stored document (`slayer_gym_guion.txt`) -> `text/plain; charset=utf-8`, `content-disposition: attachment`, `x-content-type-options: nosniff`;
-  - a subtitle (`.srt`) -> same treatment (attachment, nosniff);
-  - an archive (`.zip`) -> `application/octet-stream`, attachment, nosniff;
-  - an image (`.png`) -> `image/png`, `content-disposition: inline`, `content-security-policy: sandbox; default-src 'none'`, nosniff.
+- `node --test api/selftest.mjs`: 5/5 pass before the regression assertions; 6/6 pass after them, including legacy-byte retrieval and client-supplied-owner isolation.
+- Live against the real store (`./start.sh`, `OWNER_SESSION=local-operator-front`): the 19 pre-existing files were adopted and `api/data/owner.json` holds `{"primary": "local-operator-front"}`.
+  - Documents and subtitles were attachments with safe MIME and nosniff.
+  - ZIP was `application/octet-stream`, with an attachment disposition.
+  - PNG was `image/png`, inline, sandboxed and nosniff.
 - The front needs no change for the session: the browser sends the `HttpOnly` cookie on its own.
 
-## Front verification evidence (T5-T7)
+## Front verification evidence (Slice B)
 - `node --check front/srt-codec.js` and `node --check front/media-results.js`: OK.
-- `node --test front/srt-codec.test.mjs`: 9/9 pass (real SRT, VTT header, BOM + CRLF, multi-line text, NOTE and cue settings, plain script rejected, serializers, round trip, rows without milliseconds).
-- Live browser (headless Chrome over CDP), replayed independently by the parent:
-  - the codec is loaded in the page (`cuesFromRows, isSubtitleText, parseCues, parseTimestamp, toSrt, toVtt`);
-  - pasting a real SRT and clicking "Importar SRT pegado" fills the rows with the REAL timings (`00:00:01.250/00:00:04.750`, `00:00:05.500/00:00:09.125`, `00:00:10.000/00:00:14.000`), not the fabricated 4-second windows;
-  - "Exportar SRT" downloads a `text/plain;charset=utf-8` blob of 155 bytes named `subtitulos.srt`; "Exportar VTT" downloads a `text/vtt;charset=utf-8` blob named `subtitulos.vtt`; the text preview still renders;
-  - a plain script keeps the previous behavior (2 rows, `00:00:00 / 00:00:04`);
-  - zero console errors.
-- Regression of the main flow after both units: "Implementar" -> `POST /api/chat -> 200 (42822ms)`, "Mis Resultados" lists the files (3 images, 3 videos, 9 subtitles), zero console errors.
+- `node --test front/srt-codec.test.mjs`: 9/9 pass.
+- The front suite passes on the front slice without Slice A's backend work (the front diff contains no backend files), proving that the slices are independent.
+- Live headless-Chrome/CDP walkthrough (a runtime harness, not an automated test): the codec loads in the page; importing real SRT fills the editor rows with real timings (`00:00:01.250/00:00:04.750`, `00:00:05.500/00:00:09.125`, `00:00:10.000/00:00:14.000`); SRT and VTT exports download `subtitulos.srt` and `subtitulos.vtt` blobs; a plain script keeps the prior behavior; there were zero console errors.
+- Known limitation: the DOM/Blob integration in `front/media-results.js` has no automated regression test; the codec itself is covered by `front/srt-codec.test.mjs`.
+- Main-flow regression: "Implementar" -> `POST /api/chat -> 200 (42822ms)`, "Mis Resultados" lists the files, with zero console errors.
 - Ownership consistency after the live run: 20 files and 23 records, all owned by `local-operator-front` (no orphans, no cross-owner leaks).
 
 ## Delivery note
-This feature landed in two work units (690 + 450 authored lines). Both exceed the ~400-line review heuristic on their own, mostly because each unit carries its own test suite (369 lines for `api/selftest.mjs`, 123 for `front/srt-codec.test.mjs`). The size is the honest cost of proving the behavior, not padding: no line was removed to fit a budget. When the branch is turned into a PR, the two units are the natural slice boundaries.
+- Authored review load: Slice A's backend work unit = 607 lines (562 additions + 45 deletions, including the 369-line `api/selftest.mjs`); its two follow-up commits bring the current slice diff to 635 lines (589 additions + 46 deletions). Slice B = 551 additions (`front/srt-codec.test.mjs` 123, ledger 101, product code 327).
+- Both slices exceed the ~400-line review budget because each unit carries its own test suite. No line was removed or shrunk to fit; each over-budget slice needs an explicit maintainer size exception.
+
+## Open maintainer decision
+- **OPEN DECISION — default owner pinning.** An independent verifier rated the `OWNER_SESSION` pinned owner as a high finding: `api/server.mjs:333` maps every request with `req.sessionId = OWNER_SESSION || sessionId`, and `start.sh:14` sets `OWNER_SESSION` by default, so the default startup does not isolate sessions from each other.
+- The maintainer must choose between single-operator local ergonomics (stable ownership after cookie resets) and strict per-session isolation (leave `OWNER_SESSION` unset). This is neither fixed nor accepted by this delivery.
