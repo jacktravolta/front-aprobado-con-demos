@@ -88,6 +88,194 @@
     return field.getAttribute("name") || field.getAttribute("placeholder") || "campo";
   }
 
+  const SRT_MAX_CUES = 200;
+
+  function srtCard() {
+    return [...document.querySelectorAll(".card")].find((card) =>
+      [...card.querySelectorAll("h3")].some(
+        (heading) => heading.textContent.trim() === "Editor SRT",
+      ),
+    );
+  }
+
+  function srtRows(card) {
+    return [...(card?.querySelector("tbody")?.rows || [])];
+  }
+
+  function srtSourceTextarea(card) {
+    const panel = card?.closest("section[aria-hidden]");
+    const table = card?.querySelector("table");
+    if (!panel) return null;
+    const areas = [...panel.querySelectorAll("textarea")].filter(
+      (area) => !table?.contains(area),
+    );
+    const labelText = (area) =>
+      [fieldLabel(area), ...(area.labels ? [...area.labels].map((label) => label.textContent) : [])]
+        .join(" ");
+    return areas.find((area) => /srt|gu[ií]on/i.test(labelText(area))) || areas[0] || null;
+  }
+
+  function waitFor(check, attempts = 100) {
+    return new Promise((resolve) => {
+      let remaining = attempts;
+      const tick = () => {
+        const value = check();
+        if (value) return resolve(value);
+        if (remaining-- <= 0) return resolve(null);
+        setTimeout(tick, 16);
+      };
+      tick();
+    });
+  }
+
+  function setReactValue(field, value) {
+    if (!field) return false;
+    const proto =
+      field instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (setter) setter.call(field, String(value));
+    else field.value = String(value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  async function setSrtField(card, index, selector, value) {
+    const field = srtRows(card)[index]?.querySelector(selector);
+    if (!setReactValue(field, value)) throw new Error("No se encontró la fila SRT.");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const updated = await waitFor(() => {
+      const current = srtRows(card)[index]?.querySelector(selector);
+      return current?.value === String(value) ? current : null;
+    });
+    if (!updated) throw new Error(`No se pudo actualizar la fila ${index + 1}.`);
+  }
+
+  async function growSrtRows(card, target) {
+    while (srtRows(card).length < target) {
+      const before = srtRows(card).length;
+      const add = [...card.querySelectorAll("button")].find((button) =>
+        /fila$/i.test(button.textContent.trim()),
+      );
+      if (!add) throw new Error("No se encontró el botón para agregar filas.");
+      add.click();
+      const grown = await waitFor(() => {
+        const rows = srtRows(card);
+        return rows.length > before ? rows : null;
+      });
+      if (!grown) throw new Error("El editor SRT no agregó la fila esperada.");
+    }
+  }
+
+  async function fillSrtRows(card, cues) {
+    for (let index = 0; index < cues.length; index += 1) {
+      const cue = cues[index];
+      await setSrtField(card, index, "td:nth-child(1) input", cue.start);
+      await setSrtField(card, index, "td:nth-child(2) input", cue.end);
+      await setSrtField(card, index, "td:nth-child(3) textarea", cue.text);
+    }
+  }
+
+  async function trimSrtRows(card, target) {
+    while (srtRows(card).length > target) {
+      const before = srtRows(card).length;
+      const rows = srtRows(card);
+      const remove = rows[rows.length - 1]
+        ?.querySelector('button[aria-label="Eliminar fila SRT"]');
+      if (!remove) throw new Error("No se encontró el botón para eliminar filas.");
+      remove.click();
+      const removed = await waitFor(() => {
+        const rows = srtRows(card);
+        return rows.length < before ? rows : null;
+      });
+      if (!removed) throw new Error("El editor SRT no eliminó la fila esperada.");
+    }
+  }
+
+  async function importSrtCues(text, codec) {
+    const card = srtCard();
+    if (!card) throw new Error("No se encontró el editor SRT.");
+    const parsed = codec.parseCues(text);
+    if (!parsed.length) throw new Error("No se encontraron subtítulos válidos.");
+    const cues = parsed.slice(0, SRT_MAX_CUES);
+    await growSrtRows(card, cues.length);
+    await fillSrtRows(card, cues);
+    await trimSrtRows(card, cues.length);
+    const suffix = parsed.length > SRT_MAX_CUES ? ` (primeros ${SRT_MAX_CUES} de ${parsed.length})` : "";
+    toast(`SRT importado: ${cues.length} subtítulos${suffix}.`, "success");
+  }
+
+  function exportSrt(format) {
+    const card = srtCard();
+    const rows = srtRows(card);
+    const codec = globalThis.MetaSrt;
+    if (!card || !rows.length) {
+      toast("No hay subtítulos para exportar.");
+      return;
+    }
+    if (!codec) {
+      toast("El codec de subtítulos no está disponible.");
+      return;
+    }
+    const cues = codec.cuesFromRows(
+      rows.map((row) => {
+        const cells = row.querySelectorAll("td");
+        return {
+          inicio: cells[0]?.querySelector("input")?.value || "",
+          fin: cells[1]?.querySelector("input")?.value || "",
+          texto: cells[2]?.querySelector("textarea")?.value || "",
+        };
+      }),
+    ) || [];
+    if (!cues.length) {
+      toast("No hay subtítulos válidos para exportar.");
+      return;
+    }
+    const vtt = format === "vtt";
+    const content = vtt ? codec.toVtt(cues) : codec.toSrt(cues);
+    const type = vtt ? "text/vtt;charset=utf-8" : "text/plain;charset=utf-8";
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const anchor = make("a", {
+      href: url,
+      download: vtt ? "subtitulos.vtt" : "subtitulos.srt",
+    });
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function installSrtEditor() {
+    document.addEventListener("click", (event) => {
+      const button = event.target?.closest?.("button");
+      const card = srtCard();
+      if (!button || !card?.contains(button)) return;
+      const label = button.textContent.trim();
+
+      if (label === "Exportar SRT" || label === "Exportar VTT") {
+        setTimeout(() => exportSrt(label === "Exportar VTT" ? "vtt" : "srt"), 0);
+        return;
+      }
+      if (label !== "Importar SRT pegado") return;
+      const text = srtSourceTextarea(card)?.value || "";
+      const codec = globalThis.MetaSrt;
+      if (!codec || typeof codec.isSubtitleText !== "function") return;
+      if (!codec.isSubtitleText(text)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      importSrtCues(text, codec).catch((error) => {
+        toast(`No se pudo importar el SRT: ${error.message}`);
+      });
+    }, true);
+  }
+
+  function installSrtEditorOnce() {
+    if (document.__metaSrtEditorInstalled) return;
+    document.__metaSrtEditorInstalled = true;
+    installSrtEditor();
+  }
+
   function findPromptTextarea(from) {
     let node = from;
     while (node && node !== document.body) {
@@ -1019,6 +1207,7 @@
   }
 
   function init() {
+    installSrtEditorOnce();
     scan();
     const observer = new MutationObserver(scan);
     observer.observe(document.body, {
