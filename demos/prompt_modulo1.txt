@@ -1,0 +1,16 @@
+MODULO 1 - VIDEO A GUION + RE-EDICION
+Pega esto en Meta AI con tu video o URL:
+
+---
+Hola Meta, MODULO 1.
+Input: [pega URL del video O sube el video]
+1. Descarga/descomprime el video y analizalo frame a frame.
+2. Extraeme el guion completo con timestamps (0.0s - X.0s): que se ve, que se dice, musica, SFX, textos en pantalla.
+3. Separa las pistas: VOZ / MUSICA / SFX / AMBIENTE. Dime que pista es cual.
+4. Muestrame el guion en modo revision para que yo lo edite: tabla TIEMPO | VISUAL | VOZ | MUSICA/SFX | TEXTO EN PANTALLA.
+5. Opciones que quiero setear ahora: DURACION FINAL = [ej: 60s / 30s / igual al original]. Si es mas largo que el original, loopear el fondo. Si es mas corto, recortar.
+6. Cuando yo te apruebe el guion, generame el video final con ese guion + el prompt del Modulo 2 (si adjunto foto de modelo).
+7. Devuelveme el video final como archivo descargable + el prompt reutilizable que usaste.
+---
+
+Si no hay voz, inventa voz en off segun guion. Mantener tildes en subtitulos karaoke: palabra actual en amarillo, resto en blanco.

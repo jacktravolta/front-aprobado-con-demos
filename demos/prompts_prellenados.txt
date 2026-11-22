@@ -1,0 +1,3 @@
+MODULO 1 PRE-LLENADO: Video gym, modelo pelo negro, pelea fondo, intro Hola a todos... Duracion 60s loop, musica Slayer, subs karaoke tildes amarillas
+MODULO 2 PRE-LLENADO: 5 modelos - 01 Mujer musculosa pelo negro / 02 Mujer rubia / 03 Hombre tatuado / 04 Mujer latina / 05 Mujer punk pelo rosado - cada una con preview 4s reutilizando prompt M1
+MODULO 3 PRE-LLENADO: Refactorizar audio - voz mujer chilena, letra nueva experimental, SRT incluido, idiomas ES-CL / ES / EN / FR
