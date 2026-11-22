@@ -24,11 +24,14 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
 const FRONT_DIR = path.join(ROOT, "front");
-const DATA_DIR = path.join(HERE, "data");
-const STORAGE_DIR = path.join(HERE, "storage", "files");
+const DATA_DIR = path.resolve(process.env.API_DATA_DIR || path.join(HERE, "data"));
+const STORAGE_DIR = path.resolve(
+  process.env.API_STORAGE_DIR || path.join(HERE, "storage", "files"),
+);
 const CONFIG_PATH = path.join(DATA_DIR, "config.json");
 const RECORDS_PATH = path.join(DATA_DIR, "records.json");
 const FILES_PATH = path.join(DATA_DIR, "files.json");
+const OWNER_PATH = path.join(DATA_DIR, "owner.json");
 
 const DEFAULTS = {
   baseUrl: "http://127.0.0.1:8055",
@@ -298,6 +301,36 @@ function sendJson(res, status, obj) {
     "cache-control": "no-store",
   });
   res.end(body);
+}
+
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const OWNER_SESSION = SESSION_ID_RE.test(process.env.OWNER_SESSION || "")
+  ? process.env.OWNER_SESSION
+  : "";
+
+function sessionIdFromRequest(req) {
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0 || part.slice(0, separator).trim() !== "sid") continue;
+    let value;
+    try {
+      value = decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      continue;
+    }
+    if (SESSION_ID_RE.test(value)) return value;
+  }
+  return null;
+}
+
+function ensureSession(req, res) {
+  let sessionId = sessionIdFromRequest(req);
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    res.setHeader("set-cookie", `sid=${sessionId}; Path=/; HttpOnly; SameSite=Strict`);
+  }
+  // A pinned operator session overrides the cookie for ownership only.
+  req.sessionId = OWNER_SESSION || sessionId;
 }
 
 function readBody(req, maxBytes = 80 * 1024 * 1024) {
@@ -675,19 +708,68 @@ async function restoreFileStorage() {
 // Generated file metadata (plain JSON)
 // ---------------------------------------------------------------------------
 
-function readFiles() {
-  const data = readJson(FILES_PATH, { files: [] });
-  return Array.isArray(data?.files) ? data.files : [];
+function recordPrimaryOwner(owner) {
+  const current = readJson(OWNER_PATH, {});
+  const primary = String(current?.primary || "");
+  if (primary === owner) return;
+  const files = readJson(FILES_PATH, { files: [] });
+  const records = readJson(RECORDS_PATH, { records: [] });
+  const primaryOwns =
+    (Array.isArray(files?.files) && files.files.some((entry) => entry.owner === primary)) ||
+    (Array.isArray(records?.records) && records.records.some((entry) => entry.owner === primary));
+  if (primary && primaryOwns) return;
+  writeJsonAtomic(OWNER_PATH, { primary: owner }, 0o600);
 }
 
-function writeFiles(files) {
-  writeJsonAtomic(FILES_PATH, { files }, 0o600);
+function readOwnedEntries(file, key, owner) {
+  const data = readJson(file, { [key]: [] });
+  const entries = Array.isArray(data?.[key]) ? data[key] : [];
+  if (!owner) return entries;
+  let changed = false;
+  for (const entry of entries) {
+    if (!entry.owner) {
+      entry.owner = owner;
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeJsonAtomic(file, { [key]: entries }, 0o600);
+    recordPrimaryOwner(owner);
+  }
+  return entries.filter((entry) => entry.owner === owner);
 }
 
-function appendFileMeta(meta) {
-  const files = readFiles();
-  files.push(meta);
-  writeFiles(files);
+function writeOwnedEntries(file, key, entries, owner) {
+  const data = readJson(file, { [key]: [] });
+  const all = Array.isArray(data?.[key]) ? data[key] : [];
+  const replacements = new Map(entries.map((entry) => [entry.id, entry]));
+  const known = new Set(all.map((entry) => entry.id));
+  const next = [];
+  for (const entry of all) {
+    if (entry.owner !== owner) {
+      next.push(entry);
+    } else if (replacements.has(entry.id)) {
+      next.push(replacements.get(entry.id));
+    }
+  }
+  for (const entry of entries) {
+    if (!known.has(entry.id)) next.push(entry);
+  }
+  writeJsonAtomic(file, { [key]: next }, 0o600);
+}
+
+function readFiles(owner) {
+  return readOwnedEntries(FILES_PATH, "files", owner);
+}
+
+function writeFiles(files, owner) {
+  writeOwnedEntries(FILES_PATH, "files", files, owner);
+}
+
+function appendFileMeta(meta, owner) {
+  const files = readFiles(owner);
+  files.push({ ...meta, owner });
+  writeFiles(files, owner);
 }
 
 function safeFileName(name, fallback = "resultado.zip") {
@@ -701,13 +783,12 @@ function safeFileName(name, fallback = "resultado.zip") {
 // Records (plain JSON, single file)
 // ---------------------------------------------------------------------------
 
-function readRecords() {
-  const data = readJson(RECORDS_PATH, { records: [] });
-  return Array.isArray(data?.records) ? data.records : [];
+function readRecords(owner) {
+  return readOwnedEntries(RECORDS_PATH, "records", owner);
 }
 
-function writeRecords(records) {
-  writeJsonAtomic(RECORDS_PATH, { records }, 0o600);
+function writeRecords(records, owner) {
+  writeOwnedEntries(RECORDS_PATH, "records", records, owner);
 }
 
 async function handleAction(req, res, body) {
@@ -720,7 +801,8 @@ async function handleAction(req, res, body) {
 
   const action = String(payload.action || "");
   const args = payload.args && typeof payload.args === "object" ? payload.args : {};
-  const records = readRecords();
+  const owner = req.sessionId;
+  const records = readRecords(owner);
 
   if (action === "records.list") {
     const collection = args.collection ? String(args.collection) : "";
@@ -755,10 +837,11 @@ async function handleAction(req, res, body) {
       collection,
       value,
       created_at: new Date().toISOString(),
+      owner,
     };
     if (idempotencyKey) record.idempotency_key = idempotencyKey;
     records.push(record);
-    writeRecords(records);
+    writeRecords(records, owner);
     return sendJson(res, 200, { data: { record } });
   }
 
@@ -772,7 +855,7 @@ async function handleAction(req, res, body) {
       return sendJson(res, 200, { data: { ok: true, deleted: 0 } });
     }
     records.splice(index, 1);
-    writeRecords(records);
+    writeRecords(records, owner);
     return sendJson(res, 200, { data: { ok: true, deleted: 1 } });
   }
 
@@ -924,6 +1007,7 @@ async function handleImprove(req, res) {
 }
 
 async function handleChat(req, res) {
+  const owner = req.sessionId;
   let body;
   try {
     body = JSON.parse((await readBody(req)) || "{}");
@@ -1069,7 +1153,15 @@ async function handleChat(req, res) {
   }
 
   // Stores one artifact and registers it in files.json.
-  const storeArtifact = ({ name, buf, mime, module, parentId = null, entry = null }) => {
+  const storeArtifact = ({
+    name,
+    buf,
+    mime,
+    module,
+    parentId = null,
+    entry = null,
+    owner: artifactOwner = owner,
+  }) => {
     const safe = safeFileName(name, "archivo");
     const kind = classifyKind(safe, mime);
     const id = crypto.randomUUID();
@@ -1087,8 +1179,9 @@ async function handleChat(req, res) {
       kind,
       parentId,
       entry,
+      owner: artifactOwner,
     };
-    appendFileMeta(meta);
+    appendFileMeta(meta, artifactOwner);
     return meta;
   };
 
@@ -1119,6 +1212,7 @@ async function handleChat(req, res) {
             module,
             parentId: archiveMeta.id,
             entry: entry.entry,
+            owner: archiveMeta.owner,
           });
           children.push(childMeta);
         } catch (error) {
@@ -1299,14 +1393,15 @@ async function handleChat(req, res) {
   });
 }
 
-function listFiles(res) {
-  const files = readFiles()
+function listFiles(res, owner) {
+  const files = readFiles(owner)
     .slice()
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
   return sendJson(res, 200, { ok: true, files });
 }
 
 function serveStoredFile(req, res, id, rawName) {
+  res.setHeader("x-content-type-options", "nosniff");
   if (!/^[A-Za-z0-9-]+$/.test(id)) {
     return sendJson(res, 400, { error: "id invalido" });
   }
@@ -1316,8 +1411,14 @@ function serveStoredFile(req, res, id, rawName) {
   } catch {
     return sendJson(res, 400, { error: "nombre invalido" });
   }
-  const safe = safeFileName(name, "");
-  if (!safe) return sendJson(res, 400, { error: "nombre invalido" });
+  if (!safeFileName(name, "")) {
+    return sendJson(res, 400, { error: "nombre invalido" });
+  }
+
+  const meta = readFiles(req.sessionId).find((file) => file.id === id);
+  if (!meta) return sendJson(res, 404, { error: "no existe" });
+  const safe = safeFileName(meta.name, "");
+  if (!safe) return sendJson(res, 404, { error: "no existe" });
 
   const base = path.join(STORAGE_DIR, id);
   const file = path.join(base, safe);
@@ -1333,30 +1434,36 @@ function serveStoredFile(req, res, id, rawName) {
   }
   if (!stat.isFile()) return sendJson(res, 404, { error: "no existe" });
 
-  const meta = readFiles().find((f) => f.id === id);
-  const mime =
-    (meta && meta.mime) ||
-    MIME_TYPES[path.extname(safe).slice(1).toLowerCase()] ||
-    "application/octet-stream";
-  const kind = (meta && meta.kind) || classifyKind(safe, mime);
+  const ext = path.extname(safe).slice(1).toLowerCase();
+  const extensionMime = MIME_TYPES[ext] || "application/octet-stream";
+  const kind = classifyKind(safe, extensionMime);
+  const media = ["image", "video", "audio"].includes(kind);
+  const storedMime = String(meta.mime || "").split(";")[0].trim().toLowerCase();
+  let mime = extensionMime;
+  if (
+    media &&
+    extensionMime === "application/octet-stream" &&
+    storedMime.startsWith(`${kind}/`)
+  ) {
+    mime = storedMime;
+  }
+  if (!media && /^(text\/html|text\/javascript)$/i.test(mime.split(";")[0].trim())) {
+    mime = "text/plain; charset=utf-8";
+  }
 
-  // Media is served inline so the front can render it; ?download=1 forces the
-  // attachment disposition and ?inline=1 forces it for any type.
+  // Media is served inline so the front can render it. Every other kind is
+  // always an attachment; ?inline=1 cannot turn active content into a preview.
   let forceDownload = false;
-  let forceInline = false;
   try {
     const url = new URL(
       req.url || "/",
       `http://${req.headers.host || "127.0.0.1"}`,
     );
     forceDownload = url.searchParams.get("download") === "1";
-    forceInline = url.searchParams.get("inline") === "1";
   } catch {
     /* ignore malformed URL */
   }
-  const inline =
-    !forceDownload &&
-    (forceInline || ["image", "video", "audio", "subtitle"].includes(kind));
+  const inline = media && !forceDownload;
 
   const asciiName = safe.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "_");
   const disposition = `${
@@ -1367,6 +1474,9 @@ function serveStoredFile(req, res, id, rawName) {
     "content-disposition": disposition,
     "accept-ranges": "bytes",
     "cache-control": "private, max-age=300",
+    ...(inline
+      ? { "content-security-policy": "sandbox; default-src 'none'" }
+      : {}),
   };
 
   const range = req.headers.range;
@@ -1402,18 +1512,21 @@ function serveStoredFile(req, res, id, rawName) {
   return fs.createReadStream(file).pipe(res);
 }
 
-function deleteStoredFile(res, id) {
+function deleteStoredFile(res, id, owner) {
   if (!/^[A-Za-z0-9-]+$/.test(id)) {
     return sendJson(res, 400, { error: "id invalido" });
+  }
+  const files = readFiles(owner);
+  if (!files.some((file) => file.id === id)) {
+    return sendJson(res, 404, { error: "no existe" });
   }
   const dir = path.join(STORAGE_DIR, id);
   if (!dir.startsWith(STORAGE_DIR + path.sep)) {
     return sendJson(res, 400, { error: "ruta invalida" });
   }
 
-  const files = readFiles();
-  const children = files.filter((f) => f.parentId === id);
-  const ids = [id, ...children.map((c) => c.id)];
+  const children = files.filter((file) => file.parentId === id);
+  const ids = [id, ...children.map((child) => child.id)];
   for (const target of ids) {
     const targetDir = path.join(STORAGE_DIR, target);
     if (!targetDir.startsWith(STORAGE_DIR + path.sep)) continue;
@@ -1423,7 +1536,7 @@ function deleteStoredFile(res, id) {
       /* best effort */
     }
   }
-  writeFiles(files.filter((f) => !ids.includes(f.id)));
+  writeFiles(files.filter((file) => !ids.includes(file.id)), owner);
   return sendJson(res, 200, { ok: true, deleted: ids.length });
 }
 
@@ -1537,6 +1650,7 @@ function sendFile(req, res, file, stat) {
 // ---------------------------------------------------------------------------
 
 const server = http.createServer(async (req, res) => {
+  ensureSession(req, res);
   const startedAt = Date.now();
   res.on("finish", () => {
     const ms = Date.now() - startedAt;
@@ -1630,7 +1744,7 @@ const server = http.createServer(async (req, res) => {
 
     // Files
     if (pathname === "/api/files" && req.method === "GET") {
-      return listFiles(res);
+      return listFiles(res, req.sessionId);
     }
     const fileMatch = /^\/api\/files\/([^/]+)\/(.+)$/.exec(pathname);
     if (fileMatch && (req.method === "GET" || req.method === "HEAD")) {
@@ -1638,7 +1752,7 @@ const server = http.createServer(async (req, res) => {
     }
     const deleteMatch = /^\/api\/files\/([^/]+)$/.exec(pathname);
     if (deleteMatch && req.method === "DELETE") {
-      return deleteStoredFile(res, deleteMatch[1]);
+      return deleteStoredFile(res, deleteMatch[1], req.sessionId);
     }
 
     // Records / actions (the existing front calls fetch("actions")).
@@ -1680,6 +1794,9 @@ ensureDirs();
 server.listen(PORT, HOST, () => {
   console.log(`Front:    http://${HOST}:${PORT}/`);
   console.log(`Own API:  http://${HOST}:${PORT}/api/`);
+  if (OWNER_SESSION) {
+    console.log(`[api] sesion fijada por OWNER_SESSION: ${OWNER_SESSION}`);
+  }
   if (!isLoopbackBind(HOST)) {
     console.warn(
       `[api] AVISO: la API escucha en ${HOST}, no es loopback. Queda expuesta a la red: usa un proxy inverso con autenticacion antes de abrirla.`,
