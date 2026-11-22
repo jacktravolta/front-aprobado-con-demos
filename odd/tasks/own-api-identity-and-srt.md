@@ -70,14 +70,15 @@ Off. This project has no test runner and no package manifest; the checks above a
 
 ## Work-unit evidence
 - Delivery strategy: `ask-on-risk`, resolved by the maintainer as "split into two slices". Chain strategy: `stacked-to-main`.
-- Slice A (backend), branch `feature/own-api-backend`, base `origin/main` (`885159b`): backend work unit `c0716a7` (`feat(api): scope the stores by session and serve generated files safely`), regression assertions `b4c8046` (`test(api): assert owner isolation and legacy bytes on disk`), and endpoint docs `5d18e78` (`docs(readme): align the file endpoint docs with the serving rules`). Files: `README.md`, `api/selftest.mjs`, `api/server.mjs`, `start.sh`. Pull request: #2 (https://github.com/jacktravolta/front-aprobado-con-demos/pull/2).
+- Slice A (backend), branch `feature/own-api-backend`, base `origin/main` (`885159b`): backend work unit `c0716a7` (`feat(api): scope the stores by session and serve generated files safely`), regression assertions `b4c8046` (`test(api): assert owner isolation and legacy bytes on disk`), endpoint docs `5d18e78` (`docs(readme): align the file endpoint docs with the serving rules`), and final owner-pin behavior `15039ce` (`revert(api): keep the owner pin unconditional and leave the exposure to the maintainer`). The intermediate loopback-only commits `c712ca6` and `c013fa7` were explicitly reverted. Files: `README.md`, `api/selftest.mjs`, `api/server.mjs`, `start.sh`. Pull request: #2 (https://github.com/jacktravolta/front-aprobado-con-demos/pull/2).
 - Slice B (front), branch `feature/own-api-front`, base `origin/main` (`885159b`): feature ledger `14c498d`, front work unit `4bb4b83` (`feat(front): real SRT import and export in the subtitle editor`), ledger updates `4840b60` and `ae385ad`, and the ledger rewrite `6a8e9b6` (`docs(tasks): record the two-slice delivery and the verification evidence`). Files: `front/index.html`, `front/media-results.js`, `front/srt-codec.js`, `front/srt-codec.test.mjs`, `odd/tasks/own-api-identity-and-srt.md`. Pull request: #3 (https://github.com/jacktravolta/front-aprobado-con-demos/pull/3).
 - Both slices are based on `origin/main`, are mergeable in either order, and touch disjoint files.
 - The former combined pull request #1 is closed as superseded by these two slices.
 
 ## Backend verification evidence (Slice A)
 - `node --check api/server.mjs`: OK.
-- `node --test api/selftest.mjs`: 5/5 pass before the regression assertions; 6/6 pass after them, including legacy-byte retrieval and client-supplied-owner isolation.
+- `node --test api/selftest.mjs`: 6/6 pass. The suite covers strict session cookies, per-session file and record isolation, ignored client-supplied ownership, legacy adoption, the unconditional `OWNER_SESSION` pin, and safe document/media serving.
+- `git diff --check origin/main...HEAD`: OK.
 - Live against the real store (`./start.sh`, `OWNER_SESSION=local-operator-front`): the 19 pre-existing files were adopted and `api/data/owner.json` holds `{"primary": "local-operator-front"}`.
   - Documents and subtitles were attachments with safe MIME and nosniff.
   - ZIP was `application/octet-stream`, with an attachment disposition.
@@ -94,9 +95,12 @@ Off. This project has no test runner and no package manifest; the checks above a
 - Ownership consistency after the live run: 20 files and 23 records, all owned by `local-operator-front` (no orphans, no cross-owner leaks).
 
 ## Delivery note
-- Authored review load: Slice A's backend work unit = 607 lines (562 additions + 45 deletions, including the 369-line `api/selftest.mjs`); its two follow-up commits bring the current slice diff to 635 lines (589 additions + 46 deletions). Slice B = 551 additions (`front/srt-codec.test.mjs` 123, ledger 101, product code 327).
+- Authored review load: Slice A's backend work unit = 607 lines (562 additions + 45 deletions, including the 369-line `api/selftest.mjs`); its follow-up commits bring the current slice diff to 635 lines (589 additions + 46 deletions). Slice B = 450 product and test additions plus this ledger.
 - Both slices exceed the ~400-line review budget because each unit carries its own test suite. No line was removed or shrunk to fit; each over-budget slice needs an explicit maintainer size exception.
 
-## Open maintainer decision
-- **OPEN DECISION — default owner pinning.** An independent verifier rated the `OWNER_SESSION` pinned owner as a high finding: `api/server.mjs:333` maps every request with `req.sessionId = OWNER_SESSION || sessionId`, and `start.sh:14` sets `OWNER_SESSION` by default, so the default startup does not isolate sessions from each other.
-- The maintainer must choose between single-operator local ergonomics (stable ownership after cookie resets) and strict per-session isolation (leave `OWNER_SESSION` unset). This is neither fixed nor accepted by this delivery.
+## Owner pin decision
+- **Decision (maintainer, 2026-11-22).** The `OWNER_SESSION` pin is unconditional: when it is configured, every request uses that owner session regardless of the bind address. Whether and how the port is exposed remains the maintainer's decision.
+- **Implementation.** `api/server.mjs:307` validates `OWNER_SESSION`, `api/server.mjs:333` applies it to every request, `api/server.mjs:1797` logs the pinned session, and `start.sh:14` provides the local operator default. Starting with `OWNER_SESSION` unset keeps strict per-session cookie isolation.
+- **Test coverage.** `api/selftest.mjs:286` proves the pin is applied while preserving the browser session cookie; the complete Slice A suite passes 6/6.
+- **Operational consequence.** The server does not infer, restrict, or migrate exposure policy. Host, firewall, proxy, and reverse-proxy configuration remain the maintainer's responsibility.
+- **Work units.** The final Slice A behavior is `15039ce` (`revert(api): keep the owner pin unconditional and leave the exposure to the maintainer`), which explicitly reverts the intermediate loopback-only implementation `c712ca6` and its documentation `c013fa7`.
