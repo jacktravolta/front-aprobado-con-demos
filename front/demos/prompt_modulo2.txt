@@ -1,0 +1,22 @@
+MODULO 2 - MODELO VIRTUAL + PREVIEW 4s
+Pega esto en Meta AI:
+
+---
+Hola Meta, MODULO 2 - MODELO VIRTUAL.
+Quiero crear una modelo virtual:
+- Genero: [MUJER / HOMBRE] (obligatorio)
+- Edad aparente adulta: [ej: 24]
+- Fisico: [ej: musculosa, pelo negro largo, etc]
+- Vestuario: [ej: top negro deportivo, choker con pinchos]
+- Actitud / gesto: [ej: cuernos rock, sonrisa]
+- Escenario: [ej: gym PROBOXING, sacos rojos]
+- Estilo foto: [vertical 9:16, luz gym, realista]
+
+1. Generame la imagen de la modelo y damela descargable.
+2. Reutiliza el prompt del MODULO 1 que te pegue abajo para generar un PREVIEW de 4 segundos de esa modelo: misma pose, leve movimiento, misma luz, sin cambiar cara/ropa.
+[PEGA AQUI EL PROMPT DEL MODULO 1]
+3. Devuelveme: imagen + video preview 4s + prompt reutilizable para Modulo 1 y Modulo 3.
+4. Si quiero X modelos, repite: dame una carpeta por modelo: Modelo_01, Modelo_02, etc. Cada una con su imagen + su preview + su prompt.
+---
+
+Regla: nunca cambiar cara/ropa entre imagen y preview. Si cambia, regenera.

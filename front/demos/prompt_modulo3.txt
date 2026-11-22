@@ -1,0 +1,17 @@
+MODULO 3 - CONVERSION DE AUDIO
+Pega esto en Meta AI:
+
+---
+Hola Meta, MODULO 3 - AUDIO.
+Input: [pega URL de video O sube audio O pega guion + SRT]
+
+Elige UNA opcion:
+A) REFACTORIZAR AUDIO: Analiza el audio original y crea una version nueva desde 0 basada en el original. No es copia, es transformacion digital experimental. Mismo tempo / mood / estructura, melodía y letra reescritas, voz nueva. Si uso modelo del Modulo 2, usa: Genero [MUJER/HOMBRE], timbre [ej: grave, energetico], acento [ej: chileno].
+B) GENERAR AUDIO DESDE GUION + SRT: Toma mi guion + SRT con tiempos y genera el audio. Traduce a: [INGLES / ESPANOL / FRANCES / ESPANOL CHILENO]. Mantener timestamps del SRT, tildes correctas, pausas naturales.
+
+1. Extrae audio si viene de URL (reutiliza Modulo 1).
+2. Devuelveme: audio final descargable + SRT final con tiempos + prompt que usaste.
+3. Si quiero reutilizar voz de un modelo del Modulo 2, dime: "Usar voz Modelo_0X" y aplica su genero/timbre.
+---
+
+Nota legal/uso: usa solo audios propios o con derecho, o transformaciones experimentales propias.

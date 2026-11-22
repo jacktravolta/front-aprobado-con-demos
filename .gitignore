@@ -1,0 +1,7 @@
+api/data/
+api/storage/
+
+.atl/.skill-registry.cache.json
+node_modules/
+*.log
+.DS_Store
