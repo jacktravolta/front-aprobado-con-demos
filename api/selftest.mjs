@@ -205,11 +205,11 @@ function cookieFrom(response) {
   return value.split(";", 1)[0];
 }
 
-async function createFile(base, cookie, name) {
+async function createFile(base, cookie, name, extra = {}) {
   const response = await request(base, "/api/chat", {
     cookie,
     method: "POST",
-    body: { text: `create ${name}` },
+    body: { text: `create ${name}`, ...extra },
   });
   const text = await response.text();
   assert.equal(response.status, 200, text);
@@ -261,6 +261,28 @@ test("isolates file lists, downloads and deletes by session", async (t) => {
   assert.equal(filesA[0].id, file.id);
 });
 
+test("ignores client-supplied ownership when creating files", async (t) => {
+  const { base, dataDir } = await startApi(t);
+  const cookieA = cookieFrom(await request(base, "/api/files"));
+  const file = await createFile(base, cookieA, "sample.png", {
+    owner: "attacker_owner_12345",
+    user_id: "attacker_user_12345",
+  });
+  const owner = cookieA.slice(4);
+  assert.equal(file.owner, owner);
+  assert.notEqual(file.owner, "attacker_owner_12345");
+
+  const storedFiles = JSON.parse(
+    fs.readFileSync(path.join(dataDir, "files.json"), "utf8"),
+  );
+  assert.equal(storedFiles.files.find((entry) => entry.id === file.id)?.owner, owner);
+
+  const cookieB = cookieFrom(await request(base, "/api/files"));
+  const filesB = (await (await request(base, "/api/files", { cookie: cookieB })).json()).files;
+  assert.deepEqual(filesB, []);
+  assert.equal((await request(base, file.url, { cookie: cookieB })).status, 404);
+});
+
 test("pins ownership with OWNER_SESSION while preserving the browser cookie", async (t) => {
   const first = await startApi(t);
   const cookieA = cookieFrom(await request(first.base, "/api/files"));
@@ -287,6 +309,9 @@ test("adopts legacy entries once and isolates them from later sessions", async (
   const files = (await (await request(base, "/api/files", { cookie: cookieA })).json()).files;
   assert.equal(files.length, 1);
   assert.equal(files[0].owner, cookieA.slice(4));
+  const legacyDownload = await request(base, files[0].url, { cookie: cookieA });
+  assert.equal(legacyDownload.status, 200);
+  assert.equal(await legacyDownload.text(), "legacy");
   const ownerPath = path.join(dataDir, "owner.json");
   const primary = JSON.parse(fs.readFileSync(ownerPath, "utf8"));
   assert.deepEqual(primary, { primary: cookieA.slice(4) });
