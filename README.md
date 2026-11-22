@@ -61,7 +61,7 @@ El boton **Probar** consulta `GET /api/health`, que valida `/health` y `/v1/mode
 | `/api/improve` | POST | Mejora un texto o un prompt (`mode: text` \| `prompt`) |
 | `/api/chat`, `/api/generate` | POST | Envia el prompt a `meta-api`, descarga y guarda todo lo generado |
 | `/api/files` | GET | Lista de archivos generados |
-| `/api/files/:id/:name` | GET | Sirve el archivo (`?inline=1` para previsualizar, `?download=1` para descargar) |
+| `/api/files/:id/:name` | GET | Sirve el archivo (imagenes, videos y audios en linea por defecto; el resto como adjunto; `?download=1` fuerza la descarga) |
 | `/api/files/:id` | DELETE | Elimina el archivo y su indice |
 | `/actions`, `/api/actions` | POST | `records.list` / `records.create` / `records.delete` (Mis Resultados) |
 
@@ -85,10 +85,11 @@ propios. El front no necesita ningun secreto: el navegador manda la cookie solo.
 
 Un archivo generado nunca se sirve como contenido activo: el MIME sale de la
 extension (no de lo que digio el proveedor), `text/html` y `text/javascript` se
-degradan a `text/plain`, todo lo que no es imagen, video o audio se manda como
-adjunto (tampoco con `?inline=1`), y cada respuesta lleva
-`X-Content-Type-Options: nosniff`. Las imagenes, videos y audios si se muestran
-en linea, con `Content-Security-Policy: sandbox; default-src 'none'`.
+degradan a `text/plain`, y cada respuesta lleva
+`X-Content-Type-Options: nosniff`. Las imagenes, videos y audios se muestran
+en linea por defecto, con `Content-Security-Policy: sandbox; default-src 'none'`.
+Todo lo demas se manda como adjunto con un MIME seguro; `?inline=1` se ignora
+y no permite forzar una vista previa.
 
 ## Flujo del front
 
