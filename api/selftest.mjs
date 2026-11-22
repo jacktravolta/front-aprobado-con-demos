@@ -7,6 +7,7 @@ import path from "node:path";
 import net from "node:net";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { isLoopbackHost, resolveOwnerMode } from "./owner-mode.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SERVER = path.join(ROOT, "api", "server.mjs");
@@ -217,6 +218,79 @@ async function createFile(base, cookie, name, extra = {}) {
   assert.equal(body.files.length, 1);
   return body.files[0];
 }
+
+test("applies the owner pin only on loopback hosts", () => {
+  const requestedPin = "local-operator-front";
+
+  for (const host of ["127.0.0.1", "127.0.0.5", "::1", "localhost"]) {
+    assert.equal(isLoopbackHost(host), true);
+    assert.deepEqual(resolveOwnerMode({ host, requestedPin }), {
+      host,
+      requestedPin,
+      pinApplied: true,
+    });
+  }
+
+  for (const host of ["0.0.0.0", "::", "192.168.1.10", "10.0.0.5", "example.test"]) {
+    assert.equal(isLoopbackHost(host), false);
+    assert.deepEqual(resolveOwnerMode({ host, requestedPin }), {
+      host,
+      requestedPin,
+      pinApplied: false,
+    });
+  }
+});
+
+test("never applies an empty or malformed owner pin", () => {
+  for (const requestedPin of ["", "short", "invalid pin!"]) {
+    for (const host of ["127.0.0.1", "203.0.113.7"]) {
+      assert.equal(resolveOwnerMode({ host, requestedPin }).pinApplied, false);
+    }
+  }
+});
+
+test("warns and exits without a listener when a non-loopback bind ignores the owner pin", async (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "own-api-owner-mode-"));
+  const dataDir = path.join(temp, "data");
+  const storageDir = path.join(temp, "storage", "files");
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(storageDir, { recursive: true });
+
+  const port = await freePort();
+  const child = spawn(process.execPath, [SERVER], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HOST: "203.0.113.7",
+      API_DATA_DIR: dataDir,
+      API_STORAGE_DIR: storageDir,
+      OWNER_SESSION: "local-operator-front",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let logs = "";
+  child.stdout.on("data", (chunk) => (logs += chunk));
+  child.stderr.on("data", (chunk) => (logs += chunk));
+
+  t.after(() => {
+    if (child.exitCode === null) child.kill("SIGKILL");
+    fs.rmSync(temp, { recursive: true, force: true });
+  });
+
+  const exit = await Promise.race([
+    new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal }))),
+    delay(5000).then(() => null),
+  ]);
+
+  assert.ok(exit, "server should exit when the non-loopback bind address is unavailable");
+  assert.notEqual(exit.code, 0);
+  assert.match(
+    logs,
+    /\[api\] AVISO: la direccion de escucha 203\.0\.113\.7 no es loopback; OWNER_SESSION se ignora y queda activo el aislamiento por sesion\. Las entradas de la sesion de operador fijada no seran visibles para una sesion nueva\./,
+  );
+  assert.doesNotMatch(logs, /^(Front:|Own API:)/m);
+});
 
 test("issues a strict session cookie and keeps health and config working", async (t) => {
   const { base } = await startApi(t);

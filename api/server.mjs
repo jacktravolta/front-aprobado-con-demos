@@ -20,6 +20,7 @@ import {
   isZipBuffer,
   mimeForName,
 } from "./media.mjs";
+import { resolveOwnerMode, SESSION_ID_RE } from "./owner-mode.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -303,10 +304,11 @@ function sendJson(res, status, obj) {
   res.end(body);
 }
 
-const SESSION_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
-const OWNER_SESSION = SESSION_ID_RE.test(process.env.OWNER_SESSION || "")
-  ? process.env.OWNER_SESSION
-  : "";
+const HOST = process.env.HOST || "127.0.0.1";
+const OWNER_MODE = resolveOwnerMode({
+  host: HOST,
+  requestedPin: process.env.OWNER_SESSION,
+});
 
 function sessionIdFromRequest(req) {
   for (const part of String(req.headers.cookie || "").split(";")) {
@@ -329,8 +331,8 @@ function ensureSession(req, res) {
     sessionId = crypto.randomUUID();
     res.setHeader("set-cookie", `sid=${sessionId}; Path=/; HttpOnly; SameSite=Strict`);
   }
-  // A pinned operator session overrides the cookie for ownership only.
-  req.sessionId = OWNER_SESSION || sessionId;
+  // A pinned operator session overrides the cookie for ownership only on loopback binds.
+  req.sessionId = OWNER_MODE.pinApplied ? OWNER_MODE.requestedPin : sessionId;
 }
 
 function readBody(req, maxBytes = 80 * 1024 * 1024) {
@@ -1787,16 +1789,20 @@ const server = http.createServer(async (req, res) => {
 // ---------------------------------------------------------------------------
 
 const PORT = Number(process.env.PORT || 8787);
-const HOST = process.env.HOST || "127.0.0.1";
 
 ensureDirs();
+
+if (OWNER_MODE.pinApplied) {
+  console.log(`[api] sesion fijada por OWNER_SESSION: ${OWNER_MODE.requestedPin}`);
+} else if (SESSION_ID_RE.test(OWNER_MODE.requestedPin)) {
+  console.warn(
+    `[api] AVISO: la direccion de escucha ${HOST} no es loopback; OWNER_SESSION se ignora y queda activo el aislamiento por sesion. Las entradas de la sesion de operador fijada no seran visibles para una sesion nueva.`,
+  );
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`Front:    http://${HOST}:${PORT}/`);
   console.log(`Own API:  http://${HOST}:${PORT}/api/`);
-  if (OWNER_SESSION) {
-    console.log(`[api] sesion fijada por OWNER_SESSION: ${OWNER_SESSION}`);
-  }
   if (!isLoopbackBind(HOST)) {
     console.warn(
       `[api] AVISO: la API escucha en ${HOST}, no es loopback. Queda expuesta a la red: usa un proxy inverso con autenticacion antes de abrirla.`,
