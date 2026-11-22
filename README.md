@@ -61,9 +61,35 @@ El boton **Probar** consulta `GET /api/health`, que valida `/health` y `/v1/mode
 | `/api/improve` | POST | Mejora un texto o un prompt (`mode: text` \| `prompt`) |
 | `/api/chat`, `/api/generate` | POST | Envia el prompt a `meta-api`, descarga y guarda todo lo generado |
 | `/api/files` | GET | Lista de archivos generados |
-| `/api/files/:id/:name` | GET | Sirve el archivo (`?inline=1` para previsualizar, `?download=1` para descargar) |
+| `/api/files/:id/:name` | GET | Sirve el archivo (imagenes, videos y audios en linea por defecto; el resto como adjunto; `?download=1` fuerza la descarga) |
 | `/api/files/:id` | DELETE | Elimina el archivo y su indice |
 | `/actions`, `/api/actions` | POST | `records.list` / `records.create` / `records.delete` (Mis Resultados) |
+
+## Sesion y aislamiento de la tienda
+
+La API no tiene login: la identidad es la **cookie de sesion** `sid` (`HttpOnly`,
+`SameSite=Strict`) que la API emite en la primera peticion. Cada archivo y cada
+registro guardan su `owner`, y las lecturas, descargas y borrados solo ven los
+propios. El front no necesita ningun secreto: el navegador manda la cookie solo.
+
+- `api/data/owner.json` — deja anotada la sesion que adopto los archivos que ya
+  existian antes de este cambio.
+- `OWNER_SESSION=<id>` — fija la sesion para todas las peticiones (modo de un
+  solo operador). `start.sh` lo deja activo con `local-operator-front` para que
+  los archivos sigan visibles aunque el navegador borre sus cookies.
+- `OWNER_SESSION=` (vacio) — aísla por perfil de navegador: cada perfil ve solo
+  lo suyo. Para recuperar el acceso a una tienda ya adoptada, arranca con
+  `OWNER_SESSION=<id>` leyendo el `primary` de `api/data/owner.json`.
+
+## Servir archivos generados
+
+Un archivo generado nunca se sirve como contenido activo: el MIME sale de la
+extension (no de lo que digio el proveedor), `text/html` y `text/javascript` se
+degradan a `text/plain`, y cada respuesta lleva
+`X-Content-Type-Options: nosniff`. Las imagenes, videos y audios se muestran
+en linea por defecto, con `Content-Security-Policy: sandbox; default-src 'none'`.
+Todo lo demas se manda como adjunto con un MIME seguro; `?inline=1` se ignora
+y no permite forzar una vista previa.
 
 ## Flujo del front
 
