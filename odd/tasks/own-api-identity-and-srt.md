@@ -72,6 +72,7 @@ Off. This project has no test runner and no package manifest; the checks above a
 - Backend unit: commit `7de1ad3` — `feat(api): scope the stores by session and serve generated files safely`.
 - Front unit: commit `58a460b` — `feat(front): real SRT import and export in the subtitle editor`.
 - Branch: `feature/own-api-integration`.
+- Pull request: https://github.com/jacktravolta/front-aprobado-con-demos/pull/1 (base `main`, 4 commits, 11 files, +1120/-45).
 
 ## Backend verification evidence (T1-T4)
 - `node --check api/server.mjs`: OK.
