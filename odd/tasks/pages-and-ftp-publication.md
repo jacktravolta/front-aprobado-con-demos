@@ -34,8 +34,8 @@ The user wants the front reachable in public places with the videos visible, not
 ## Tasks
 - [x] T1. FTP: confirm login, locate the real docroot and the quota.
 - [x] T2. FTP: create `demo/` and upload the 24 front files (23 assets plus `index.html`), generating the subfolder copy with the `/demo/` base.
-- [ ] T3. Repo: set the document base to `./` so the same file resolves on Pages, on the FTP subfolder and on the local server.
-- [ ] T4. Publish the `front/` subtree to `gh-pages` and verify the live assets return 200 from the project path.
+- [x] T3. Repo: set the document base to `./` so the same file resolves on Pages, on the FTP subfolder and on the local server.
+- [x] T4. Publish the `front/` subtree to `gh-pages` and verify the live assets return 200 from the project path.
 
 ## Acceptance criteria
 - `https://jacktravolta.github.io/front-aprobado-con-demos/` serves the front.
@@ -52,3 +52,16 @@ The user wants the front reachable in public places with the videos visible, not
 
 ## Progress
 - 2026-11-26: FTP upload finished. 24 files, 73 MB, zero failures. The demo copy carries `<base href="/demo/">`.
+- 2026-11-26: T3 done. `front/index.html` base changed from `/` to `./` (commit `b0820ab` on `chore/pages-relative-base`).
+- 2026-11-26: T4 done. `gh-pages` republished from the `front/` subtree (`dad4ce5..28da355`). Pages status `built`.
+
+## Verification evidence
+- `node --check` on `front/srt-codec.js`, `front/media-results.js`, `front/meta-api-client.js`: all OK.
+- `node --test front/srt-codec.test.mjs`: 9 passed, 0 failed.
+- Local own API on port 8791: `/` 200 with `<base href="./">`; `media-results.js`, `srt-codec.js`, the model image, the module 1 video and the module 3 audio all 200.
+- Pages `https://jacktravolta.github.io/front-aprobado-con-demos/`: `/` 200, `/index.html` 200, `media-results.js` 200 (`application/javascript`), `srt-codec.js` 200, model image 200 (`image/webp`), both module 1 videos 200 (`video/mp4`), module 3 audio 200 (`audio/mp4`), preview 5 200 (`video/mp4`). Served HTML carries `<base href="./">`.
+- FTP: `demo/` holds the front (`index.html`, `media-results.js`, `meta-api-client.js`, `srt-codec.js`, `README.txt`, `demos/` with the four asset folders and the four prompt files). Remote `demo/index.html` is 219559 bytes and carries `<base href="/demo/">`; the 47 MB module 1 video is 46983696 bytes remote, matching local.
+- FTP root untouched: still the landing (`index.html` with title "Creaciones Harú | Contenido y Marketing", `css/`, `js/`, `assets/`, `robots.txt`, `sitemap.xml`, `cgi-bin/`, `php.ini`, `.htaccess`, `.well-known/`), plus the new `demo/` folder.
+
+## Next step
+- The static host has no own API, so `/api/*` and `/actions` fail there by design. Video generation needs the own API running (`./start.sh`) or a reachable API origin.
